@@ -1,16 +1,16 @@
 import OpenAI from "openai";
-import { google } from "googleapis";
 
 const client = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY,
 });
 
 function extrairFolderId(url) {
-  const match = url.match(/folders\/([^?]+)/);
+  const match =
+    url.match(/folders\/([^?]+)/);
 
   if (!match) {
     throw new Error(
-      "Link da pasta do Google Drive inválido"
+      "Link da pasta inválido"
     );
   }
 
@@ -18,70 +18,87 @@ function extrairFolderId(url) {
 }
 
 async function listarFotos(folderId) {
-  const drive = google.drive({
-    version: "v3",
+  const url =
+    `https://www.googleapis.com/drive/v3/files?q='${folderId}'+in+parents+and+mimeType+contains+'image/'&fields=files(id,name)&key=${process.env.GOOGLE_API_KEY}`;
 
-    auth: process.env.GOOGLE_API_KEY,
-  });
+  const res =
+    await fetch(url);
 
-  const resposta =
-    await drive.files.list({
-      q: `'${folderId}' in parents and mimeType contains 'image/'`,
+  if (!res.ok) {
+    const erro =
+      await res.text();
 
-      fields:
-        "files(id,name,mimeType)",
-    });
+    throw new Error(
+      erro
+    );
+  }
 
-  return resposta.data.files || [];
+  const data =
+    await res.json();
+
+  return (
+    data.files ||
+    []
+  );
 }
 
-async function analisarImagem(
-  nome,
-  imagem
+async function analisar(
+  url,
+  nome
 ) {
-  const resposta =
-    await client.responses.create({
-      model: "gpt-4.1-mini",
+  const r =
+    await client.responses.create(
+      {
+        model:
+          "gpt-4.1-mini",
 
-      input: [
-        {
-          role: "user",
+        input: [
+          {
+            role:
+              "user",
 
-          content: [
-            {
-              type: "input_text",
+            content:
+              [
+                {
+                  type:
+                    "input_text",
 
-              text: `
+                  text:
+                    `
 Avalie esta fotografia.
 
 Retorne:
-- Nota geral (0–10)
-- Composição
-- Enquadramento
-- Luz
-- Nitidez
-- Impacto visual
-- Sugestão de melhoria
+- nota (0–10)
+- composição
+- luz
+- enquadramento
+- nitidez
+- impacto visual
+- recomendação
 
 Responda em português.
 `,
-            },
+                },
 
-            {
-              type: "input_image",
+                {
+                  type:
+                    "input_image",
 
-              image_url: imagem,
-            },
-          ],
-        },
-      ],
-    });
+                  image_url:
+                    url,
+                },
+              ],
+          },
+        ],
+      }
+    );
 
   return {
-    foto: nome,
+    foto:
+      nome,
 
-    avaliacao:
-      resposta.output_text,
+    resultado:
+      r.output_text,
   };
 }
 
@@ -102,39 +119,32 @@ export async function POST(
         folderId
       );
 
-    if (
-      !fotos.length
-    ) {
-      return Response.json({
-        erro:
-          "Nenhuma foto encontrada",
-      });
-    }
-
-    const resultado =
+    const saida =
       [];
 
     for (
       const foto of fotos
     ) {
       const imagem =
-        `https://drive.google.com/uc?id=${foto.id}`;
+        `https://drive.google.com/thumbnail?id=${foto.id}&sz=w2000`;
 
-      const analise =
-        await analisarImagem(
-          foto.name,
-          imagem
+      const r =
+        await analisar(
+          imagem,
+          foto.name
         );
 
-      resultado.push(
-        analise
+      saida.push(
+        r
       );
     }
 
     return Response.json(
-      resultado
+      saida
     );
-  } catch (error) {
+  } catch (
+    error
+  ) {
     return Response.json(
       {
         error:
@@ -142,7 +152,8 @@ export async function POST(
       },
 
       {
-        status: 500,
+        status:
+          500,
       }
     );
   }
