@@ -8,9 +8,11 @@ export async function POST(req) {
   try {
     const body = await req.json();
 
+    const message = body.message || "Olá";
+
     const response = await client.responses.create({
       model: "gpt-4.1-mini",
-      input: body.message,
+      input: message,
     });
 
     return Response.json({
