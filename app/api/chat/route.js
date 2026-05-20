@@ -1,10 +1,23 @@
 import OpenAI from "openai";
+import { google } from "googleapis";
 
 const client = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY,
 });
 
-function extrairFolderId(url) {
+const credentials = JSON.parse(
+  process.env.GOOGLE_SERVICE_ACCOUNT_JSON
+);
+
+const auth =
+  new google.auth.GoogleAuth({
+    credentials,
+    scopes: [
+      "https://www.googleapis.com/auth/drive.readonly",
+    ],
+  });
+
+function pegarFolderId(url) {
   const match =
     url.match(/folders\/([^?]+)/);
 
@@ -18,88 +31,74 @@ function extrairFolderId(url) {
 }
 
 async function listarFotos(folderId) {
-  const url =
-    `https://www.googleapis.com/drive/v3/files?q='${folderId}'+in+parents+and+mimeType+contains+'image/'&fields=files(id,name)&key=${process.env.GOOGLE_API_KEY}`;
+  const drive =
+    google.drive({
+      version: "v3",
+      auth,
+    });
 
   const res =
-    await fetch(url);
-
-  if (!res.ok) {
-    const erro =
-      await res.text();
-
-    throw new Error(
-      erro
-    );
-  }
-
-  const data =
-    await res.json();
+    await drive.files.list({
+      q: `'${folderId}' in parents and mimeType contains 'image/' and trashed=false`,
+      fields:
+        "files(id,name)",
+    });
 
   return (
-    data.files ||
+    res.data.files ||
     []
   );
 }
 
 async function analisar(
-  url,
-  nome
+  url
 ) {
   const r =
-    await client.responses.create(
-      {
-        model:
-          "gpt-4.1-mini",
+    await client.responses.create({
+      model:
+        "gpt-4.1-mini",
 
-        input: [
-          {
-            role:
-              "user",
+      input: [
+        {
+          role:
+            "user",
 
-            content:
-              [
-                {
-                  type:
-                    "input_text",
+          content:
+            [
+              {
+                type:
+                  "input_text",
 
-                  text:
-                    `
+                text:
+                  `
 Avalie esta fotografia.
 
 Retorne:
-- nota (0–10)
-- composição
-- luz
-- enquadramento
-- nitidez
-- impacto visual
-- recomendação
+- Nota geral (0–10)
+- Composição
+- Enquadramento
+- Luz
+- Nitidez
+- Impacto visual
+- Melhorias
 
 Responda em português.
 `,
-                },
+              },
 
-                {
-                  type:
-                    "input_image",
+              {
+                type:
+                  "input_image",
 
-                  image_url:
-                    url,
-                },
-              ],
-          },
-        ],
-      }
-    );
+                image_url:
+                  url,
+              },
+            ],
+        },
+      ],
+    });
 
-  return {
-    foto:
-      nome,
-
-    resultado:
-      r.output_text,
-  };
+  return r.output_text;
 }
 
 export async function POST(
@@ -110,7 +109,7 @@ export async function POST(
       await req.json();
 
     const folderId =
-      extrairFolderId(
+      pegarFolderId(
         body.link
       );
 
@@ -119,29 +118,45 @@ export async function POST(
         folderId
       );
 
-    const saida =
+    if (
+      fotos.length ===
+      0
+    ) {
+      return Response.json({
+        error:
+          "Nenhuma foto encontrada",
+      });
+    }
+
+    const resultado =
       [];
 
     for (
       const foto of fotos
     ) {
-      const imagem =
+      const url =
         `https://drive.google.com/thumbnail?id=${foto.id}&sz=w2000`;
 
-      const r =
+      const texto =
         await analisar(
-          imagem,
-          foto.name
+          url
         );
 
-      saida.push(
-        r
-      );
+      resultado.push({
+        foto:
+          foto.name,
+
+        analise:
+          texto,
+      });
     }
 
-    return Response.json(
-      saida
-    );
+    return Response.json({
+      total:
+        resultado.length,
+
+      resultado,
+    });
   } catch (
     error
   ) {
@@ -150,7 +165,6 @@ export async function POST(
         error:
           error.message,
       },
-
       {
         status:
           500,
