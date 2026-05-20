@@ -3,77 +3,67 @@
 import { useState } from "react";
 
 export default function Home() {
-  const [link, setLink] = useState("");
-  const [resultado, setResultado] = useState("");
-  const [carregando, setCarregando] = useState(false);
+  const [message, setMessage] = useState("");
+  const [reply, setReply] = useState("");
+  const [loading, setLoading] = useState(false);
 
-  async function analisar() {
-    setCarregando(true);
+  async function handleAnalyze() {
+    setLoading(true);
 
-    const res = await fetch("/api/chat", {
-      method: "POST",
+    try {
+      const response = await fetch("/api/chat", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          message,
+        }),
+      });
 
-      headers: {
-        "Content-Type": "application/json",
-      },
+      const data = await response.json();
 
-      body: JSON.stringify({
-        link,
-      }),
-    });
+      setReply(data.reply || data.error);
+    } catch (error) {
+      setReply("Erro ao conectar.");
+    }
 
-    const data = await res.json();
-
-    setResultado(
-      data.resultado || data.error
-    );
-
-    setCarregando(false);
+    setLoading(false);
   }
 
   return (
-    <main
-      style={{
-        maxWidth: 800,
-        margin: "40px auto",
-        padding: 20,
-      }}
-    >
-      <h1>Análise de Fotos</h1>
-
-      <p>Cole o link público da foto do Google Drive</p>
+    <main style={{ padding: 40 }}>
+      <h1>Curadoria IA</h1>
 
       <input
-        value={link}
-        onChange={(e) =>
-          setLink(e.target.value)
-        }
+        type="text"
+        placeholder="Cole o link do Drive"
+        value={message}
+        onChange={(e) => setMessage(e.target.value)}
         style={{
           width: "100%",
           padding: 12,
+          marginTop: 20,
         }}
       />
 
-      <br />
-      <br />
-
       <button
-        onClick={analisar}
-      >
-        {carregando
-          ? "Analisando..."
-          : "Analisar"}
-      </button>
-
-      <pre
+        onClick={handleAnalyze}
         style={{
-          marginTop: 30,
-          whiteSpace:
-            "pre-wrap",
+          marginTop: 20,
+          padding: 12,
+          cursor: "pointer",
         }}
       >
-        {resultado}
-      </pre>
+        {loading ? "Analisando..." : "Analisar"}
+      </button>
+
+      {reply && (
+        <div style={{ marginTop: 30 }}>
+          <strong>Resposta:</strong>
+          <p>{reply}</p>
+        </div>
+      )}
     </main>
   );
 }
